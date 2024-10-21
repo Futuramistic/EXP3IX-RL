@@ -114,6 +114,7 @@ def train_and_evaluate_gt(
             rewards[i] = bandit.get_reward(action)
             state_rewards[i] = bandit.get_optimal_value() # If regret - returns cumulative rewards
             picked_actions[i] = action # Prepare for calculating the optimal action
+            gt_algorithm.train(action, rewards[i])
             
             np.random.set_state(state)
             
@@ -122,9 +123,7 @@ def train_and_evaluate_gt(
             rl_rewards[i] = rl_bandit.get_reward(rl_action)
             rl_state_rewards[i] = rl_bandit.get_optimal_value() # If regret - returns cumulative rewards
             rl_picked_actions[i] = rl_action # Prepare for calculating the optimal action
-
-            rl_algorithm.train(action, rl_rewards[i])
-            gt_algorithm.train(action, rewards[i])
+            rl_algorithm.train(rl_action, rl_rewards[i])
 
         optimal_action = bandit.get_optimal_action()
         rl_optimal_action = rl_bandit.get_optimal_action()
@@ -135,17 +134,13 @@ def train_and_evaluate_gt(
         rl_average_measures += np.cumsum(rl_optimal_rewards) - np.cumsum(rl_rewards) # Weak regret 
 
         bandit.reset()
-        rl_algorithm.soft_reset()
-        gt_algorithm.soft_reset()
+        rl_algorithm.reset()
+        gt_algorithm.reset()
 
     tqdm.write(f"{str(gt_algorithm)} equalibtium (weights): {gt_algorithm.get_equilibrium()[0]}")
 
 
     ## EVALUATION  ##
-
-    # bandit copy for rl_algorithm
-    rl_bandit = copy.deepcopy(bandit)
-
     rl_average_measures /= num_runs
     rl_percents_optimal /= num_runs
     gt_average_measures /= num_runs
@@ -258,8 +253,8 @@ def gt():
 
 
 def gt_tg():
-    num_steps = 500
-    num_runs = 1000
+    num_steps = 5000
+    num_runs = 100
     gt_algo = EXP3IXrl
     rl_algos = [
         (GradientBandit, (), {'alpha': 0.1, 'baseline': True}),
