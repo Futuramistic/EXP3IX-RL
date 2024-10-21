@@ -83,42 +83,17 @@ def train_and_evaluate_gt(
     ##  TRAINING   ##
     # Train the gt_algorithm with the rl_algorithm
     bandit.reset()
-    # rl_algorithm.reset()
-    # gt_algorithm.reset()
-    # for _ in tqdm(range(1), desc=f'Training {str(gt_algorithm)} with {str(rl_algorithm)}'):
-    # bandit.reset()
-    # rl_algorithm.soft_reset()
-    # gt_algorithm.soft_reset()
-    for i in tqdm(range(num_runs), desc=f'Training {str(gt_algorithm)} with {str(rl_algorithm)}', leave=False, position=1):
-        for _ in range(num_steps):
-            action = rl_algorithm.select_action()
-            reward = bandit.get_reward(action)
-            # print("agent sees the reward", reward)
-            rl_algorithm.train(action, reward)
-            gt_algorithm.train(action, reward)
-        bandit.reset()
-        rl_algorithm.soft_reset()
-        gt_algorithm.soft_reset()
-
-    tqdm.write(f"{str(gt_algorithm)} equalibtium (weights): {gt_algorithm.get_equilibrium()[0]}")
-
-
-    ## EVALUATION  ##
     rl_average_measures = np.zeros(num_steps)
     rl_percents_optimal = np.zeros(num_steps)
     gt_average_measures = np.zeros(num_steps)
-    gt_percents_optimal = np.zeros(num_steps)
-
     # bandit copy for rl_algorithm
     rl_bandit = copy.deepcopy(bandit)
 
     gt_choses = []
 
-    equalibrum, visits = gt_algorithm.get_equilibrium()
-    for _ in tqdm(range(num_runs), desc=f'Evaluating {str(gt_algorithm)} with {str(rl_algorithm)}', leave=False, position=1):
-        bandit.reset()
-        rl_bandit = copy.deepcopy(bandit) # Always have them exactly the same
-
+    gt_percents_optimal = np.zeros(num_steps)
+    for i in tqdm(range(num_runs), desc=f'Training {str(gt_algorithm)} with {str(rl_algorithm)}', leave=False, position=1):
+        gt_choses = []
         rewards = np.zeros(num_steps)
         rl_rewards = np.zeros(num_steps)
 
@@ -128,50 +103,48 @@ def train_and_evaluate_gt(
         state_rewards = [0] * num_steps
         rl_state_rewards = [0] * num_steps
 
-        gt_chosen = 0
         for i in range(num_steps):
+            state = np.random.get_state()
+            
             ## GT ##
+            equalibrum, visits = gt_algorithm.get_equilibrium()
             action = gt_algorithm.action_selection(equalibrum, visits, certainty)
             if action == -1:
-                tqdm.write("RL action")
                 action = rl_algorithm.select_action()
-            else: 
-                gt_chosen += 1
             rewards[i] = bandit.get_reward(action)
-
+            state_rewards[i] = bandit.get_optimal_value() # If regret - returns cumulative rewards
+            picked_actions[i] = action # Prepare for calculating the optimal action
+            
+            np.random.set_state(state)
+            
             ## RL ##
             rl_action = rl_algorithm.select_action()
             rl_rewards[i] = rl_bandit.get_reward(rl_action)
+            rl_state_rewards[i] = rl_bandit.get_optimal_value() # If regret - returns cumulative rewards
+            rl_picked_actions[i] = rl_action # Prepare for calculating the optimal action
 
-            # If regret, calculate regret as G_max - G_t
-            if regret:
-                state_rewards[i] = bandit.get_optimal_value() # If regret - returns cumulative rewards
-                rl_state_rewards[i] = rl_bandit.get_optimal_value() # If regret - returns cumulative rewards
-
-                picked_actions[i] = action # Prepare for calculating the optimal action
-                rl_picked_actions[i] = rl_action # Prepare for calculating the optimal action
-
-        gt_choses.append(gt_chosen / num_steps)
+            rl_algorithm.train(action, rl_rewards[i])
+            gt_algorithm.train(action, rewards[i])
 
         optimal_action = bandit.get_optimal_action()
         rl_optimal_action = rl_bandit.get_optimal_action()
+        optimal_rewards = np.vstack(state_rewards)[:, optimal_action]            
+        rl_optimal_rewards = np.vstack(rl_state_rewards)[:, rl_optimal_action]
 
-        if regret: 
-            optimal_rewards = np.vstack(state_rewards)[:, optimal_action]            
-            rl_optimal_rewards = np.vstack(rl_state_rewards)[:, rl_optimal_action]
+        gt_average_measures += np.cumsum(optimal_rewards) - np.cumsum(rewards) # Weak regret
+        rl_average_measures += np.cumsum(rl_optimal_rewards) - np.cumsum(rl_rewards) # Weak regret 
 
-            gt_average_measures += np.cumsum(optimal_rewards) - np.cumsum(rewards) # Weak regret
-            rl_average_measures += np.cumsum(rl_optimal_rewards) - np.cumsum(rl_rewards) # Weak regret       
+        bandit.reset()
+        rl_algorithm.soft_reset()
+        gt_algorithm.soft_reset()
 
-            # Calculate the weak regret bound without upper bound on G_max
-            # regret_bound += (math.exp(1) - 1) * algorithm.gamma * cumulative_rewards + (n * math.log(n)) / algorithm.gamma
+    tqdm.write(f"{str(gt_algorithm)} equalibtium (weights): {gt_algorithm.get_equilibrium()[0]}")
 
-        else:
-            gt_average_measures += np.cumsum(rewards)
-            rl_average_measures += np.cumsum(rl_rewards)
-        
-        gt_percents_optimal += picked_actions == optimal_action
-        rl_percents_optimal += rl_picked_actions == rl_optimal_action
+
+    ## EVALUATION  ##
+
+    # bandit copy for rl_algorithm
+    rl_bandit = copy.deepcopy(bandit)
 
     rl_average_measures /= num_runs
     rl_percents_optimal /= num_runs
@@ -271,7 +244,7 @@ def gt():
         # Define a formatter function for percentages
         def to_percent(y, position):
             # Format tick label as percentage
-            return '{:.0f}%'.format(y)
+            return f'{y*100:.0f}%'
 
         # Create a FuncFormatter object using the formatter function
         formatter = FuncFormatter(to_percent)
@@ -285,8 +258,8 @@ def gt():
 
 
 def gt_tg():
-    num_steps = 5000
-    num_runs = 100
+    num_steps = 500
+    num_runs = 1000
     gt_algo = EXP3IXrl
     rl_algos = [
         (GradientBandit, (), {'alpha': 0.1, 'baseline': True}),
@@ -327,7 +300,8 @@ def gt_tg():
 
         # average_rewards = np.load('average_rewards.npy')
         # percents_optimal = np.load('percent_optimal.npy')
-        plt.figure(figsize=(10, 20))
+        fig = plt.figure(figsize=(10, 20))
+        fig.suptitle(f'Certainty {z}')
         plt.subplot(3, 1, 1)
         # plt.plot(gt_average_regret[0], 'b-', label='EXP3IXrl with EXP3')
         # plt.plot(rl_average_regret[0], 'b--', label='EXP3')
