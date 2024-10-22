@@ -86,8 +86,6 @@ def train_and_evaluate_gt(
     rl_average_measures = np.zeros(num_steps)
     rl_percents_optimal = np.zeros(num_steps)
     gt_average_measures = np.zeros(num_steps)
-    # bandit copy for rl_algorithm
-    rl_bandit = copy.deepcopy(bandit)
 
     gt_choses = []
 
@@ -123,17 +121,15 @@ def train_and_evaluate_gt(
             rl_picked_actions[i] = rl_action # Prepare for calculating the optimal action
 
             np.random.set_state(reward_state)
-            rl_rewards[i] = rl_bandit.get_reward(rl_action)
-            rl_state_rewards[i] = rl_bandit.get_optimal_value() # If regret - returns cumulative rewards
+            rl_rewards[i] = bandit.get_reward(rl_action)
+            rl_state_rewards[i] = bandit.get_optimal_value() # If regret - returns cumulative rewards
             rl_algorithm.train(rl_action, rl_rewards[i])
 
         optimal_action = bandit.get_optimal_action()
-        rl_optimal_action = rl_bandit.get_optimal_action()
         optimal_rewards = np.vstack(state_rewards)[:, optimal_action]            
-        rl_optimal_rewards = np.vstack(rl_state_rewards)[:, rl_optimal_action]
-
+        
         gt_average_measures += np.cumsum(optimal_rewards) - np.cumsum(rewards) # Weak regret
-        rl_average_measures += np.cumsum(rl_optimal_rewards) - np.cumsum(rl_rewards) # Weak regret 
+        rl_average_measures += np.cumsum(optimal_rewards) - np.cumsum(rl_rewards) # Weak regret 
 
         bandit.reset()
         rl_algorithm.reset()
@@ -263,6 +259,9 @@ def gt_tg():
         (UCB, (), {'c': 2}),
         (EpsilonGreedy, (), {'epsilon': 0.1})
     ]
+
+    names = [ rl_algo[0].__name__ for rl_algo in rl_algos ]
+    color = [ 'b', 'g', 'r']
     zetas = [0, 5, 50, 200, 500, 1000, 2000]
 
     certainty_bar = tqdm(zetas, leave=True, position=0, total=len(zetas))
@@ -295,19 +294,12 @@ def gt_tg():
         np.save(folder + f'rl_percent_optimal_{z}.npy', rl_percents_optimal)
         tqdm.write('saved average regret and percent optimal')
 
-        # average_rewards = np.load('average_rewards.npy')
-        # percents_optimal = np.load('percent_optimal.npy')
         fig = plt.figure(figsize=(10, 20))
         fig.suptitle(f'Certainty {z}')
         plt.subplot(3, 1, 1)
-        # plt.plot(gt_average_regret[0], 'b-', label='EXP3IXrl with EXP3')
-        # plt.plot(rl_average_regret[0], 'b--', label='EXP3')
-        plt.plot(gt_average_regret[0], 'b-', label='EXP3IXrl with GradientBandit')
-        plt.plot(rl_average_regret[0], 'b--', label='GradientBandit')
-        plt.plot(gt_average_regret[1], 'r-', label='EXP3IXrl with UCB')
-        plt.plot(rl_average_regret[1], 'r--', label='UCB')
-        plt.plot(gt_average_regret[2], 'g-', label='EXP3IXrl with EpsilonGreedy')
-        plt.plot(rl_average_regret[2], 'g--', label='EpsilonGreedy')
+        for i, _ in enumerate(rl_algos):
+            plt.plot(gt_average_regret[i], f'{color[i]}-', label=f'EXP3IXrl with {names[i]}')
+            plt.plot(rl_average_regret[i], f'{color[i]}--', label=f'{names[i]}')
         plt.xlabel('steps')
         plt.ylabel('average regret')
         plt.legend()
@@ -315,27 +307,21 @@ def gt_tg():
 
         plt.subplot(3, 1, 2)
         width = 0.35  # width of the bars
-        categories = ['GradientBandit', 'UCB', 'EpsilonGreedy']
-        x = np.arange(len(categories))  # the x locations for the groups
+        x = np.arange(len(rl_algos))  # the x locations for the groups
 
         # Plot error bars
-        for i in range(len(categories)):
-            plt.bar(x[i] - width/2, gt_selects_mean[i], width=width, label='EXP3IXrl with ' + categories[i])
+        for i,_ in enumerate(rl_algos):
+            plt.bar(x[i] - width/2, gt_selects_mean[i], width=width, label=f'EXP3IXrl with {names[i]}')
 
         plt.ylabel('Percentage of EXP3IXrl selected actions')
-        plt.xticks(x, categories)
+        plt.xticks(x, names)
         plt.legend()
 
 
         plt.subplot(3, 1, 3)
-        # plt.plot(gt_percents_optimal[0], 'b-', label='EXP3IXrl with EXP3')
-        # plt.plot(rl_percents_optimal[0], 'b--', label='EXP3')
-        plt.plot(gt_percents_optimal[0], 'b-', label='EXP3IXrl with GradientBandit')
-        plt.plot(rl_percents_optimal[0], 'b--', label='GradientBandit')
-        plt.plot(gt_percents_optimal[1], 'r-', label='EXP3IXrl with UCB')
-        plt.plot(rl_percents_optimal[1], 'r--', label='UCB')
-        plt.plot(gt_percents_optimal[2], 'g-', label='EXP3IXrl with EpislonGreedy')
-        plt.plot(rl_percents_optimal[2], 'g--', label='EpislonGreedy')
+        for i,_ in enumerate(rl_algos):
+            plt.plot(gt_percents_optimal[i], f'{color[i]}-', label=f'EXP3IXrl with {names[i]}')
+            plt.plot(rl_percents_optimal[i], f'{color[i]}--', label=f'{names[i]}')
         plt.xlabel('steps')
         plt.ylabel('% optimal action')
         plt.legend()

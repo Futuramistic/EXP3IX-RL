@@ -120,6 +120,9 @@ class EpsilonGreedy(Algorithm):
     def __str__(self) -> str:
         return f'EpsilonGreedy(epsilon={self.epsilon})'
 
+    def __repr__(self):
+        return 'EpsilonGreedy'
+
 
 class UCB(Algorithm):  # Em - this is great and traditionally has shown improvements over the static epsilon greedy strategy. notice the c value influces the exploration-exploitation tradeoff
     '''
@@ -194,6 +197,9 @@ class UCB(Algorithm):  # Em - this is great and traditionally has shown improvem
 
     def __str__(self) -> str:
         return f'UCB(c={self.c})'
+  
+    def __repr__(self):
+        return 'UCB'
 
 
 class GradientBandit(Algorithm): # Em - this is a great algorithm (also excels at non-stationary bandits) and is essentially the REINFORCE algorithm for bandits
@@ -285,6 +291,9 @@ class GradientBandit(Algorithm): # Em - this is a great algorithm (also excels a
 
     def __str__(self) -> str:
         return f'GradientBandit(alpha={self.alpha if self.alpha is not None else "1/k"}, baseline={self.baseline})'
+    
+    def __repr__(self):
+        return 'GradientBandit'
 
     def softmax(self, x):
         '''
