@@ -109,16 +109,11 @@ def train_and_evaluate_gt(
     gt_average_measures = np.zeros(num_steps)
     gt_percents_optimal = np.zeros(num_steps)
 
-    # bandit copy for rl_algorithm
-    rl_bandit = copy.deepcopy(bandit)
-
     gt_choses = []
 
     equalibrum, visits = gt_algorithm.get_equilibrium()
     for _ in tqdm(range(num_runs), desc=f'Evaluating {str(gt_algorithm)} with {str(rl_algorithm)}', leave=False, position=1):
         bandit.reset()
-        rl_bandit = copy.deepcopy(bandit) # Always have them exactly the same
-
         rewards = np.zeros(num_steps)
         rl_rewards = np.zeros(num_steps)
 
@@ -134,7 +129,6 @@ def train_and_evaluate_gt(
             state_action = np.random.get_state()
             action = gt_algorithm.action_selection(equalibrum, visits, certainty)
             if action == -1:
-                tqdm.write("RL action")
                 action = rl_algorithm.select_action()
             else: 
                 gt_chosen += 1
@@ -150,20 +144,17 @@ def train_and_evaluate_gt(
             rl_picked_actions[i] = rl_action # Prepare for calculating the optimal action
             
             np.random.set_state(state_reward)
-            rl_rewards[i] = rl_bandit.get_reward(rl_action)
-            rl_state_rewards[i] = rl_bandit.get_optimal_value() # If regret - returns cumulative rewards
+            rl_rewards[i] = bandit.get_reward(rl_action)
+            rl_state_rewards[i] = bandit.get_optimal_value() # If regret - returns cumulative rewards
 
         gt_choses.append(gt_chosen / num_steps)
 
         optimal_action = bandit.get_optimal_action()
-        rl_optimal_action = rl_bandit.get_optimal_action()
-
-        if regret: 
-            optimal_rewards = np.vstack(state_rewards)[:, optimal_action]            
-            rl_optimal_rewards = np.vstack(rl_state_rewards)[:, rl_optimal_action]
-
+        optimal_rewards = np.vstack(state_rewards)[:, optimal_action]
+        
+        if regret:           
             gt_average_measures += np.cumsum(optimal_rewards) - np.cumsum(rewards) # Weak regret
-            rl_average_measures += np.cumsum(rl_optimal_rewards) - np.cumsum(rl_rewards) # Weak regret       
+            rl_average_measures += np.cumsum(optimal_rewards) - np.cumsum(rl_rewards) # Weak regret       
 
             # Calculate the weak regret bound without upper bound on G_max
             # regret_bound += (math.exp(1) - 1) * algorithm.gamma * cumulative_rewards + (n * math.log(n)) / algorithm.gamma
@@ -173,7 +164,7 @@ def train_and_evaluate_gt(
             rl_average_measures += np.cumsum(rl_rewards)
         
         gt_percents_optimal += picked_actions == optimal_action
-        rl_percents_optimal += rl_picked_actions == rl_optimal_action
+        rl_percents_optimal += rl_picked_actions == optimal_action
 
     rl_average_measures /= num_runs
     rl_percents_optimal /= num_runs
