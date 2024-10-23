@@ -124,14 +124,12 @@ def train_and_evaluate_gt(
         rl_state_rewards = [0] * num_steps
 
         gt_chosen = 0
-        gt_copy = copy.deepcopy(gt_algorithm)
-        rl_copy = copy.deepcopy(gt_algorithm)
         for i in range(num_steps):
             ## GT ##
             state_action = np.random.get_state()
-            action = gt_copy.action_selection(equalibrum, visits, certainty)
+            action = gt_algorithm.action_selection(equalibrum, visits, certainty)
             if action == -1:
-                action = rl_copy.select_action()
+                action = rl_algorithm.select_action()
             else: 
                 gt_chosen += 1
             picked_actions[i] = action # Prepare for calculating the optimal action
@@ -139,17 +137,17 @@ def train_and_evaluate_gt(
             state_reward = np.random.get_state()
             rewards[i] = bandit.get_reward(action)
             state_rewards[i] = bandit.get_optimal_value() # If regret - returns cumulative rewards
-            gt_copy.train(action, rewards[i])
+            gt_algorithm.train(action, rewards[i])
 
             np.random.set_state(state_action)
             ## RL ##
-            rl_action = rl_copy.select_action()
+            rl_action = rl_algorithm.select_action()
             rl_picked_actions[i] = rl_action # Prepare for calculating the optimal action
             
             np.random.set_state(state_reward)
             rl_rewards[i] = bandit.get_reward(rl_action)
             rl_state_rewards[i] = bandit.get_optimal_value() # If regret - returns cumulative rewards
-            rl_copy.train(rl_action, rl_rewards[i])
+            rl_algorithm.train(rl_action, rl_rewards[i])
 
         gt_choses.append(gt_chosen / num_steps)
 
@@ -284,7 +282,7 @@ def gt():
 
 
 def gt_tg():
-    num_steps = 5000
+    num_steps = 10000
     num_runs = 100
     gt_algo = EXP3IXrl
     rl_algos = [
