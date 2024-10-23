@@ -131,6 +131,9 @@ def train_and_evaluate_gt(
         gt_average_measures += np.cumsum(optimal_rewards) - np.cumsum(rewards) # Weak regret
         rl_average_measures += np.cumsum(optimal_rewards) - np.cumsum(rl_rewards) # Weak regret 
 
+        gt_percents_optimal += picked_actions == optimal_action
+        rl_percents_optimal += rl_picked_actions == optimal_action
+
         bandit.reset()
         rl_algorithm.reset()
         gt_algorithm.reset()
