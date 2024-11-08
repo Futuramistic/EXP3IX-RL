@@ -83,37 +83,25 @@ def train_and_evaluate_gt(
     ##  TRAINING   ##
     # Train the gt_algorithm with the rl_algorithm
     bandit.reset()
-    # rl_algorithm.reset()
-    # gt_algorithm.reset()
-    # for _ in tqdm(range(1), desc=f'Training {str(gt_algorithm)} with {str(rl_algorithm)}'):
-    # bandit.reset()
-    # rl_algorithm.soft_reset()
-    # gt_algorithm.soft_reset()
     for i in tqdm(range(num_runs), desc=f'Training {str(gt_algorithm)} with {str(rl_algorithm)}', leave=False, position=1):
+        #TRAIN
         for _ in range(num_steps):
             action = rl_algorithm.select_action()
             reward = bandit.get_reward(action)
             # print("agent sees the reward", reward)
             rl_algorithm.train(action, reward)
             gt_algorithm.train(action, reward)
-        bandit.reset()
-        rl_algorithm.soft_reset()
-        gt_algorithm.soft_reset()
-
-    tqdm.write(f"{str(gt_algorithm)} equalibtium (weights): {gt_algorithm.get_equilibrium()[0]}")
 
 
-    ## EVALUATION  ##
-    rl_average_measures = np.zeros(num_steps)
-    rl_percents_optimal = np.zeros(num_steps)
-    gt_average_measures = np.zeros(num_steps)
-    gt_percents_optimal = np.zeros(num_steps)
+        ## EVALUATION  ##
+        rl_average_measures = np.zeros(num_steps)
+        rl_percents_optimal = np.zeros(num_steps)
+        gt_average_measures = np.zeros(num_steps)
+        gt_percents_optimal = np.zeros(num_steps)
 
-    gt_choses = []
+        gt_choses = []
 
-    equalibrum, visits = gt_algorithm.get_equilibrium()
-    for _ in tqdm(range(num_runs), desc=f'Evaluating {str(gt_algorithm)} with {str(rl_algorithm)}', leave=False, position=1):
-        bandit.reset()
+        equalibrum, visits = gt_algorithm.get_equilibrium()
         rewards = np.zeros(num_steps)
         rl_rewards = np.zeros(num_steps)
 
@@ -137,7 +125,6 @@ def train_and_evaluate_gt(
             state_reward = np.random.get_state()
             rewards[i] = bandit.get_reward(action)
             state_rewards[i] = bandit.get_optimal_value() # If regret - returns cumulative rewards
-            gt_algorithm.train(action, rewards[i])
 
             np.random.set_state(state_action)
             ## RL ##
@@ -147,7 +134,6 @@ def train_and_evaluate_gt(
             np.random.set_state(state_reward)
             rl_rewards[i] = bandit.get_reward(rl_action)
             rl_state_rewards[i] = bandit.get_optimal_value() # If regret - returns cumulative rewards
-            rl_algorithm.train(rl_action, rl_rewards[i])
 
         gt_choses.append(gt_chosen / num_steps)
 
@@ -167,8 +153,8 @@ def train_and_evaluate_gt(
         
         gt_percents_optimal += picked_actions == optimal_action
         rl_percents_optimal += rl_picked_actions == optimal_action
-        rl_algorithm.soft_reset()
-        gt_algorithm.soft_reset()
+        rl_algorithm.reset()
+        gt_algorithm.reset()
 
     rl_average_measures /= num_runs
     rl_percents_optimal *= 100./num_runs
