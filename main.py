@@ -42,7 +42,7 @@ def main():
 
 
 def evaluate(bandit, gt_algorithm, rl_algorithm, num_eval_steps, certainty):
-    ## EVALUATION  ##
+    ## EVALUATION ##
     gt_rewards = np.zeros((num_eval_steps))
     rl_rewards = np.zeros((num_eval_steps))
     gt_actions = np.zeros((num_eval_steps),dtype=int)
@@ -79,6 +79,42 @@ def train(bandit, gt_algorithm, rl_algorithm, num_train_steps):
         gt_algorithm.train(action, reward)
     return gt_algorithm, rl_algorithm
 
+def training_dynamics(bandit, gt_algorithm, rl_algorithm, num_steps, certainty):
+    gt_rewards = np.zeros(num_steps)
+    rl_rewards = np.zeros(num_steps)
+
+    gt_actions = np.zeros((num_steps),dtype=int)
+    rl_actions = np.zeros((num_steps),dtype=int)
+
+    gt_state_rewards = [0] * num_steps
+    rl_state_rewards = [0] * num_steps
+
+    for i in range(num_steps):
+        ## GT ##
+        action_state = np.random.get_state()
+        equalibrum, visits = gt_algorithm.get_equilibrium()
+        action = gt_algorithm.action_selection(equalibrum, visits, certainty)
+        if action == -1:
+            action = rl_algorithm.select_action()
+        gt_actions[i] = action # Prepare for calculating the optimal action
+
+        reward_state = np.random.get_state()
+        gt_rewards[i] = bandit.get_reward(action)
+        gt_state_rewards[i] = bandit.get_optimal_value() # If regret - returns cumulative rewards
+        gt_algorithm.train(action, gt_rewards[i])
+        
+        np.random.set_state(action_state)
+        ## RL ##
+        rl_action = rl_algorithm.select_action()
+        rl_actions[i] = rl_action # Prepare for calculating the optimal action
+
+        np.random.set_state(reward_state)
+        rl_rewards[i] = bandit.get_reward(rl_action)
+        rl_state_rewards[i] = bandit.get_optimal_value() # If regret - returns cumulative rewards
+        rl_algorithm.train(rl_action, rl_rewards[i])
+
+    return (gt_rewards, gt_actions, gt_state_rewards), (rl_rewards, rl_actions, rl_state_rewards)
+
 def compute_statistics(bandit, gt, rl, num_eval_steps):
     (gt_rewards, gt_actions, gt_state_rewards) = gt
     (rl_rewards, rl_actions, rl_state_rewards) = rl
@@ -114,37 +150,6 @@ def gather_visualization_statistics(
         *args, 
         **kwargs
     ) -> Tuple[np.ndarray, np.ndarray]:
-    '''
-    Train and evaluate the EXP3IX-RL algorithm.
-
-    Parameters
-    ----------
-    bandit : BanditEnvironment
-        The bandit environment.
-    num_steps : int
-        The number of steps to run the algorithm.
-    num_runs : int
-        The number of runs to average over.
-    rl_algorithm : Algorithm
-        The RL training algorithm to use. E.g. EpsilonGreedy, UCB, etc.
-    gt_algorithm : Algorithm
-        The GT training algorithm to use. E.g. EXP3IXrl.
-    certainty : int
-        The certainty level for the GT algorithm. How many times each action should be visited to have enough confidence in GT.
-    regret : bool, optional
-        If True, calculate based on regret. Defaults to False.
-    trial : bool, optional
-        If True, use a hardcoded switch of optimal action. Defaults to False.
-    *args, **kwargs
-        Additional arguments to pass to the algorithm. E.g. epsilon for EpsilonGreedy.
-
-    Returns
-    -------
-    average_rewards : np.ndarray
-        The average reward at each step.
-    percents_optimal : np.ndarray
-        The percentage of optimal actions the algorithm takes at each step.
-    '''
     n = bandit.n
 
     rl_algorithm = rl_algorithm(n, *args, **kwargs)
@@ -161,9 +166,9 @@ def gather_visualization_statistics(
     gt_percents_optimal = np.zeros(num_eval_steps)
     
     for _ in tqdm(range(num_runs), desc=f'Training {str(gt_algorithm)} with {str(rl_algorithm)}', leave=False, position=1):
-        gt_algorithm, rl_algorithm = train(bandit, gt_algorithm, rl_algorithm, num_train_steps)
-        gt, rl = evaluate(bandit,gt_algorithm,rl_algorithm,num_eval_steps,certainty)
-        (gt_weak_regret_measures,rl_weak_regret_measures), _, (gt_percents, rl_percents) = compute_statistics(bandit,gt,rl,num_eval_steps=num_eval_steps)
+        # Pretrain the algorithm and gather training statistics
+        gt, rl = training_dynamics(bandit,gt_algorithm,rl_algorithm,num_train_steps,certainty)
+        (gt_weak_regret_measures,rl_weak_regret_measures), _, (gt_percents, rl_percents) = compute_statistics(bandit,gt,rl,num_eval_steps=num_train_steps)
         
         gt_average_measures+=gt_weak_regret_measures
         rl_average_measures+=rl_weak_regret_measures
@@ -172,6 +177,7 @@ def gather_visualization_statistics(
 
         rl_algorithm.reset()
         gt_algorithm.reset()
+        bandit.reset()
 
     rl_average_measures /= num_runs
     rl_percents_optimal *= 100./num_runs
@@ -191,44 +197,11 @@ def train_and_evaluate(
         *args, 
         **kwargs
     ) -> Tuple[np.ndarray, np.ndarray]:
-    '''
-    Train and evaluate the EpsilonGreedy algorithm.
-
-    Parameters
-    ----------
-    bandit : BanditEnvironment
-        The bandit environment.
-    num_steps : int
-        The number of steps to run the algorithm.
-    num_runs : int
-        The number of runs to average over.
-    rl_algorithm : Algorithm
-        The RL training algorithm to use. E.g. EpsilonGreedy, UCB, etc.
-    gt_algorithm : Algorithm
-        The GT training algorithm to use. E.g. EXP3IXrl.
-    certainty : int
-        The certainty level for the GT algorithm. How many times each action should be visited to have enough confidence in GT.
-    regret : bool, optional
-        If True, calculate based on regret. Defaults to False.
-    trial : bool, optional
-        If True, use a hardcoded switch of optimal action. Defaults to False.
-    *args, **kwargs
-        Additional arguments to pass to the algorithm. E.g. epsilon for EpsilonGreedy.
-
-    Returns
-    -------
-    average_rewards : np.ndarray
-        The average reward at each step.
-    percents_optimal : np.ndarray
-        The percentage of optimal actions the algorithm takes at each step.
-    '''
     n = bandit.n
 
     rl_algorithm = rl_algorithm_class(n, *args, **kwargs)
     gt_algorithm = gt_algorithm_class()
 
-    ##  TRAINING   ##
-    # Train the gt_algorithm with the rl_algorithm
     gt_rewards_measures = np.zeros((num_runs))
     rl_rewards_measures = np.zeros((num_runs))
 
@@ -237,6 +210,7 @@ def train_and_evaluate(
 
     bandit.reset()
     for i in tqdm(range(num_runs), desc=f'Training {str(gt_algorithm)} with {str(rl_algorithm)}', leave=False, position=1):
+        # Pretrain the algorithm and evaluate on a frozen model
         gt_algorithm, rl_algorithm = train(bandit, gt_algorithm, rl_algorithm, num_train_steps)
         gt, rl = evaluate(bandit,gt_algorithm,rl_algorithm,num_eval_steps,certainty)
         (gt_weak_regret_measures,rl_weak_regret_measures), (gt_rewards, rl_rewards), _ = compute_statistics(bandit,gt,rl,num_eval_steps=num_eval_steps)
