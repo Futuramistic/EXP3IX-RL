@@ -6,7 +6,7 @@ class BanditEnvironment:
     A simple bandit environment with n actions.
     The true action values are sampled from a normal distribution with mean 0 and standard deviation 1.
     '''
-    def __init__(self, n: int, q_dist_func: Callable=lambda n: np.random.normal(0, 1, n)) -> None:
+    def __init__(self, n: int, q_dist_func: Callable=lambda n: np.random.normal(0, 1, n), stochastic: bool = True) -> None:
         '''
         Initialize the BanditEnvironment.
 
@@ -20,7 +20,8 @@ class BanditEnvironment:
         '''
         self.n = n
         self.q_dist_func = q_dist_func
-        self.q_values = q_dist_func(n)  # Initialize the true action values with a normal distribution
+        self.q_values = q_dist_func(n)  if stochastic else np.arange(0, n) / n # Initialize the true action values with a normal distribution
+        self.stochastic = stochastic
 
     def get_reward(self, action: int) -> float:
         '''
@@ -36,8 +37,9 @@ class BanditEnvironment:
         reward : float
             The reward sampled from a normal distribution with mean q_values[action] and standard deviation 1.
         '''
-        reward = self.q_values[action] + np.random.normal(0, 1)
-        # print(f"Action: {action}, True Value: {self.q_values[action]}, Reward: {reward}")
+        reward = self.q_values[action] 
+        if self.stochastic:
+            reward += np.random.normal(0, 1)
         return reward
     
     def get_optimal_action(self) -> int:
@@ -67,7 +69,7 @@ class BanditEnvironment:
         '''
         Reset the environment.
         '''
-        self.q_values = self.q_dist_func(self.n)
+        self.q_values = self.q_dist_func(self.n) if self.stochastic else np.arange(0, self.n) / self.n
 
 
 
