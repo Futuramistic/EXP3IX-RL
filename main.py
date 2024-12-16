@@ -29,9 +29,10 @@ def main():
     zetas = [0, 5, 50, 100, 200, 500, 1000, 1500, 2000]
     path = os.path.join(os.curdir,'results','MAB')
     os.makedirs(path,exist_ok=True)
-    #gather_test_statistics(num_steps,num_runs,gt_algo,rl_algos,zetas,path)
+    gather_test_statistics(num_steps,num_runs,gt_algo,rl_algos,zetas,path)
 
     np.random.seed(0)
+    num_steps = 5000
     color = ['b','r','g']
     rl_algos = [
         (GradientBandit, (), {'alpha': 0.1, 'baseline': True}),
@@ -116,8 +117,8 @@ def training_dynamics(bandit, gt_algorithm, rl_algorithm, num_steps, certainty):
     return (gt_rewards, gt_actions, gt_state_rewards), (rl_rewards, rl_actions, rl_state_rewards)
 
 def compute_statistics(bandit, gt, rl, num_eval_steps):
-    (gt_rewards, gt_actions, gt_state_rewards) = gt
-    (rl_rewards, rl_actions, rl_state_rewards) = rl
+    (_, gt_actions, gt_state_rewards) = gt
+    (_, rl_actions, rl_state_rewards) = rl
     optimal_action = bandit.get_optimal_action()
 
     steps = np.arange(num_eval_steps)
@@ -175,14 +176,14 @@ def gather_visualization_statistics(
         gt_percents_optimal+=gt_percents
         rl_percents_optimal+=rl_percents
 
+        bandit.reset()
         rl_algorithm.reset()
         gt_algorithm.reset()
-        bandit.reset()
 
     rl_average_measures /= num_runs
-    rl_percents_optimal *= 100./num_runs
+    rl_percents_optimal /= num_runs
     gt_average_measures /= num_runs
-    gt_percents_optimal *= 100./num_runs
+    gt_percents_optimal /= num_runs
     
     return (gt_average_measures, gt_percents_optimal), (rl_average_measures, rl_percents_optimal)
 
@@ -312,7 +313,6 @@ def visualize(rl_algos, certainty, gt_average_regret, rl_average_regret, gt_perc
         plt.yticks(100*np.arange(0.0,1.01,0.1))
         plt.legend()
         plt.savefig(os.path.join(path,'Freq',f'EXP3IXrl-Freq_{certainty}_{rl_algos[i][0].__name__}.png'))
-        plt.show()
         plt.close()
 
 if __name__ == '__main__':
