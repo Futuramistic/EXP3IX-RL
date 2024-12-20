@@ -1,0 +1,3 @@
+[submodule "CC2/Submodules/cage-challenge-2"]
+	path = CC2/Submodules/cage-challenge-2
+	url = https://github.com/cage-challenge/cage-challenge-2.git

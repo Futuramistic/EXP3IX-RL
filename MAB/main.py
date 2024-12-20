@@ -16,12 +16,13 @@ np.random.seed(0)
 np.seterr(divide = 'ignore')
 
 def main():
-    num_steps = 10000
+    num_train_steps = 10000
+    num_eval_steps = 30
     num_runs = 100
     gt_algo = EXP3IXrl
     rl_algos = [
-        (EXP3, (), {'time_horizon':num_steps}),
-        (EXP3IX, (), {'time_horizon':num_steps}),
+        (EXP3, (), {'time_horizon':num_train_steps}),
+        (EXP3IX, (), {'time_horizon':num_train_steps}),
         (GradientBandit, (), {'alpha': 0.1, 'baseline': True}),
         (UCB, (), {'c': 2}),
         (EpsilonGreedy, (), {'epsilon': 0.1})
@@ -29,17 +30,19 @@ def main():
     zetas = [0, 5, 50, 100, 200, 500, 1000, 1500, 2000]
     path = os.path.join(os.curdir,'results','MAB')
     os.makedirs(path,exist_ok=True)
-    gather_test_statistics(num_steps,num_runs,gt_algo,rl_algos,zetas,path)
+    gather_test_statistics(num_train_steps,num_eval_steps,num_runs,gt_algo,rl_algos,zetas,path)
 
     np.random.seed(0)
-    num_steps = 5000
+    num_train_steps = 5000
+    num_eval_steps = 100
+    active = False
     color = ['b','r','g']
     rl_algos = [
         (GradientBandit, (), {'alpha': 0.1, 'baseline': True}),
         (UCB, (), {'c': 2}),
         (EpsilonGreedy, (), {'epsilon': 0.1})
     ]
-    visualize_stochastic_environment_learning(num_steps,num_runs,gt_algo,rl_algos,zetas,path,color)
+    visualize_stochastic_environment_learning(num_train_steps,num_eval_steps,num_runs,gt_algo,rl_algos,zetas,path,color,active)
 
 
 def evaluate(bandit, gt_algorithm, rl_algorithm, num_eval_steps, certainty):
@@ -147,7 +150,7 @@ def gather_visualization_statistics(
         rl_algorithm: Algorithm,
         gt_algorithm: Algorithm,
         certainty: int,
-        regret: bool = False,
+        active: bool = False,
         *args, 
         **kwargs
     ) -> Tuple[np.ndarray, np.ndarray]:
@@ -167,9 +170,14 @@ def gather_visualization_statistics(
     gt_percents_optimal = np.zeros(num_eval_steps)
     
     for _ in tqdm(range(num_runs), desc=f'Training {str(gt_algorithm)} with {str(rl_algorithm)}', leave=False, position=1):
-        # Pretrain the algorithm and gather training statistics
-        gt, rl = training_dynamics(bandit,gt_algorithm,rl_algorithm,num_train_steps,certainty)
-        (gt_weak_regret_measures,rl_weak_regret_measures), _, (gt_percents, rl_percents) = compute_statistics(bandit,gt,rl,num_eval_steps=num_train_steps)
+        if active:
+            # Allow active data collection
+            gt, rl = training_dynamics(bandit,gt_algorithm,rl_algorithm,num_train_steps,certainty)
+        else:
+            # Pretrain the algorithm and gather training statistics (Passive)
+            gt_algorithm, rl_algorithm = train(bandit, gt_algorithm, rl_algorithm, num_train_steps)
+            gt, rl = evaluate(bandit,gt_algorithm,rl_algorithm,num_eval_steps,certainty)
+        (gt_weak_regret_measures,rl_weak_regret_measures), _, (gt_percents, rl_percents) = compute_statistics(bandit,gt,rl,num_eval_steps=num_eval_steps)
         
         gt_average_measures+=gt_weak_regret_measures
         rl_average_measures+=rl_weak_regret_measures
@@ -184,7 +192,6 @@ def gather_visualization_statistics(
     rl_percents_optimal /= num_runs
     gt_average_measures /= num_runs
     gt_percents_optimal /= num_runs
-    
     return (gt_average_measures, gt_percents_optimal), (rl_average_measures, rl_percents_optimal)
 
 def train_and_evaluate(
@@ -245,7 +252,7 @@ def train_and_evaluate(
     return {f'{gt_algorithm_class.__name__}':{"Regret":gt_regret,'Reward':gt_reward},
             f'{rl_algorithm_class.__name__}':{"Regret":rl_regret,'Reward':rl_reward}}
 
-def gather_test_statistics(num_steps, num_runs, gt_algo, rl_algos, zetas, path):
+def gather_test_statistics(num_train_steps, num_eval_steps, num_runs, gt_algo, rl_algos, zetas, path):
     certainty_bar = tqdm(reversed(zetas), leave=True, position=0, total=len(zetas))
     for z in certainty_bar:
         certainty_bar.set_description_str(f'Certainty {z}')
@@ -253,29 +260,29 @@ def gather_test_statistics(num_steps, num_runs, gt_algo, rl_algos, zetas, path):
         results = {}
         for i, (algorithm, args, kwargs) in enumerate(rl_algos):
             stochastic_bandit = BanditEnvironment(10, stochastic=True)
-            stochastic = train_and_evaluate(stochastic_bandit, num_steps, 30, num_runs, algorithm, gt_algo, certainty = z, *args, **kwargs)
+            stochastic = train_and_evaluate(stochastic_bandit, num_train_steps, num_eval_steps, num_runs, algorithm, gt_algo, certainty = z, *args, **kwargs)
             deterministic_bandit = BanditEnvironment(10, stochastic=False)
-            deterministic = train_and_evaluate(deterministic_bandit, num_steps, 30, num_runs, algorithm, gt_algo, certainty = z, *args, **kwargs)
+            deterministic = train_and_evaluate(deterministic_bandit, num_train_steps, num_eval_steps, num_runs, algorithm, gt_algo, certainty = z, *args, **kwargs)
             np.random.set_state(state_rl)
             results[rl_algos[i][0].__name__] = {'Deterministic': deterministic, 'Stochastic': stochastic}
         with open(os.path.join(path,f'results_{z}.json'), 'w') as f:
             json.dump(results, f, indent=4)
 
 
-def visualize_stochastic_environment_learning(num_steps,num_runs,gt_algo,rl_algos,zetas,path,color):
+def visualize_stochastic_environment_learning(num_train_steps,num_eval_steps,num_runs,gt_algo,rl_algos,zetas,path,color,active):
     certainty_bar = tqdm(reversed(zetas), leave=True, position=0, total=len(zetas))
     for z in certainty_bar:
         certainty_bar.set_description_str(f'Certainty {z}')
 
-        gt_average_regret = np.zeros((len(rl_algos), num_steps))
-        gt_percents_optimal = np.zeros((len(rl_algos), num_steps))
-        rl_average_regret = np.zeros((len(rl_algos), num_steps))
-        rl_percents_optimal = np.zeros((len(rl_algos), num_steps))
+        gt_average_regret = np.zeros((len(rl_algos), num_eval_steps))
+        gt_percents_optimal = np.zeros((len(rl_algos), num_eval_steps))
+        rl_average_regret = np.zeros((len(rl_algos), num_eval_steps))
+        rl_percents_optimal = np.zeros((len(rl_algos), num_eval_steps))
 
 
         bandit = BanditEnvironment(10, stochastic=True)
         for i, (algorithm, args, kwargs) in enumerate(rl_algos):
-            (gt_average_regret[i], gt_percents_optimal[i]), (rl_average_regret[i], rl_percents_optimal[i]) = gather_visualization_statistics(bandit, num_steps, num_steps, num_runs, algorithm, gt_algo, certainty = z, regret=True, *args, **kwargs)
+            (gt_average_regret[i], gt_percents_optimal[i]), (rl_average_regret[i], rl_percents_optimal[i]) = gather_visualization_statistics(bandit, num_train_steps, num_eval_steps, num_runs, algorithm, gt_algo, certainty = z, active=active, *args, **kwargs)
 
         np.save(os.path.join(path,f'gt_average_regret_{z}_.npy'), gt_average_regret)
         np.save(os.path.join(path,f'gt_percent_optimal_{z}.npy'), gt_percents_optimal)
@@ -294,8 +301,10 @@ def visualize(rl_algos, certainty, gt_average_regret, rl_average_regret, gt_perc
     plt.xlabel('Steps')
     plt.ylabel('Average Regret')
     plt.legend()
-    plt.title(f'Certainty {certainty}')
-    plt.savefig(os.path.join(path,'Regret',f'EXP3IXrl-Regret_{certainty}.png'))
+    plt.subplots_adjust(top = 1, bottom = 0, right = 1, left = 0, 
+                hspace = 0, wspace = 0)
+    plt.margins(0,0)
+    plt.savefig(os.path.join(path,'Regret',f'EXP3IXrl-Regret_{certainty}.png'), bbox_inches = 'tight', pad_inches = 0)
     plt.close()
 
     os.makedirs(os.path.join(path,'Freq'),exist_ok=True)
@@ -305,14 +314,16 @@ def visualize(rl_algos, certainty, gt_average_regret, rl_average_regret, gt_perc
         else:
             data = np.stack([gt_percents_optimal[i],rl_percents_optimal[i]],axis=0).T
         plt.figure(figsize=(10, 20/3))
-        plt.title(f'Certainty {certainty}')
         plt.hist(data, bins=100*np.arange(0.0,1.01,0.1), weights=100*np.ones(data.shape)/data.shape[0], label = [f'EXP3IXrl with {rl_algos[i][0].__name__}',rl_algos[i][0].__name__])
         plt.xlabel(f'Frequency of Optimal Action Chosen (%)')
         plt.xticks(100*np.arange(0.0,1.01,0.1))
         plt.ylabel(f'Frequency of Occurance Within a Run (%)')
         plt.yticks(100*np.arange(0.0,1.01,0.1))
         plt.legend()
-        plt.savefig(os.path.join(path,'Freq',f'EXP3IXrl-Freq_{certainty}_{rl_algos[i][0].__name__}.png'))
+        plt.subplots_adjust(top = 1, bottom = 0, right = 1, left = 0, 
+                    hspace = 0, wspace = 0)
+        plt.margins(0,0)
+        plt.savefig(os.path.join(path,'Freq',f'EXP3IXrl-Freq_{certainty}_{rl_algos[i][0].__name__}.png'), bbox_inches = 'tight', pad_inches = 0)
         plt.close()
 
 if __name__ == '__main__':
