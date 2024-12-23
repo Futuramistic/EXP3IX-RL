@@ -15,7 +15,6 @@ import tqdm
 
 PATH = str(inspect.getfile(CybORG))
 PATH = PATH[:-10] + '/Shared/Scenarios/Scenario2.yaml' # for CC2 game
-# PATH = '/scratch/egraham/CASTLE-GT/RL/cage-challenge-2-main/CybORG/CybORG/Shared/Scenarios/Scenario2_Operations.yaml'
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
